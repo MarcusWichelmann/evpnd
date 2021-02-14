@@ -1,5 +1,7 @@
 package config
 
+import "github.com/spf13/viper"
+
 type Config struct {
 	VTEP VTEP `mapstructure:"vtep"`
 }
@@ -33,10 +35,13 @@ type Neighbors struct {
 
 type Connect struct {
 	Address string `mapstructure:"address"`
-	PeerAS  string `mapstructure:"peer-as"`
 }
 
 type Accept struct {
 	Prefix string `mapstructure:"prefix"`
-	PeerAS string `mapstructure:"peer-as"`
+}
+
+func SetDefaults(v *viper.Viper) {
+	v.SetDefault("vtep.bgp.listen-port", -1)
+	v.SetDefault("vtep.bgp.listen-addresses", []string{"0.0.0.0", "::"})
 }
