@@ -40,6 +40,9 @@ func (vtep *VTEP) Configure(ctx context.Context, cfg config.VTEP) error {
 	if err := vtep.configurePeerGroup(ctx, cfg); err != nil {
 		return err
 	}
+	if err := vtep.configureDynamicNeighbors(ctx, cfg); err != nil {
+		return err
+	}
 
 	log.Info("VTEP configured.")
 
@@ -165,6 +168,66 @@ func (vtep *VTEP) configurePeerGroup(ctx context.Context, cfg config.VTEP) error
 
 func (vtep *VTEP) configureDynamicNeighbors(ctx context.Context, cfg config.VTEP) error {
 	log.Debug("Configuring dynamic neighbors...")
+
+	var toBeDeleted []*gobgpapi.DynamicNeighbor
+	var toBeCreated = make([]*gobgpapi.DynamicNeighbor, len(cfg.BGP.Neighbors.Accept))
+	for i, accept := range cfg.BGP.Neighbors.Accept {
+		toBeCreated[i] = &gobgpapi.DynamicNeighbor{
+			Prefix:    accept.Prefix,
+			PeerGroup: PeerGroupName,
+		}
+	}
+
+	// Check for which dynamic neighbor entries already exist
+	err := vtep.bgpServer.ListDynamicNeighbor(ctx, &gobgpapi.ListDynamicNeighborRequest{
+		PeerGroup: PeerGroupName,
+	}, func(dn *gobgpapi.DynamicNeighbor) {
+		// Was it in the to-be-created slice?
+		var toBeCreatedIndex = -1
+		for i, tbc := range toBeCreated {
+			if tbc.PeerGroup == dn.PeerGroup && tbc.Prefix == dn.Prefix {
+				toBeCreatedIndex = i
+				break
+			}
+		}
+
+		if toBeCreatedIndex == -1 {
+			// This entry is no longer needed and should be deleted
+			toBeDeleted = append(toBeDeleted, dn)
+		} else {
+			// No need to create this entry because it already exists
+			toBeCreated[toBeCreatedIndex] = toBeCreated[len(toBeCreated)-1]
+			toBeCreated = toBeCreated[:len(toBeCreated)-1]
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	// Delete no longer needed entries
+	for _, tbd := range toBeDeleted {
+		if err := vtep.bgpServer.DeleteDynamicNeighbor(ctx, &gobgpapi.DeleteDynamicNeighborRequest{
+			Prefix:    tbd.Prefix,
+			PeerGroup: tbd.PeerGroup,
+		}); err != nil {
+			return err
+		}
+		log.WithField("Prefix", tbd.Prefix).Info("Dynamic neighbor entry deleted.")
+	}
+
+	// Create new entries
+	for _, tbc := range toBeCreated {
+		if err := vtep.bgpServer.AddDynamicNeighbor(ctx, &gobgpapi.AddDynamicNeighborRequest{
+			DynamicNeighbor: tbc,
+		}); err != nil {
+			return err
+		}
+		log.WithField("Prefix", tbc.Prefix).Info("Dynamic neighbor entry created.")
+	}
+
+	if len(toBeCreated) == 0 && len(toBeDeleted) == 0 {
+		log.Info("Dynamic neighbors have not changed.")
+	}
 
 	return nil
 }

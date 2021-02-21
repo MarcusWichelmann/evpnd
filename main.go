@@ -42,19 +42,12 @@ func main() {
 		}
 	}
 
-	// Set log level
-	switch options.LogLevel {
-	case "debug":
-		log.SetLevel(log.DebugLevel)
-	case "info":
-		log.SetLevel(log.InfoLevel)
-	case "warn":
-		log.SetLevel(log.WarnLevel)
-	default:
-		log.Fatal("Unknown log level")
-	}
-
 	// Configure logging
+	logLevel, err := log.ParseLevel(options.LogLevel)
+	if err != nil {
+		log.WithError(err).Fatal("Unknown log level")
+	}
+	log.SetLevel(logLevel)
 	if options.LogJson {
 		log.SetFormatter(&log.JSONFormatter{})
 	}
@@ -95,15 +88,13 @@ func main() {
 		reconfigure <- struct{}{}
 	})
 
-	// The current state of the configuration
-	var cfg config.Config
-
 	// Handle events
 EventLoop:
 	for {
 		select {
 		case <-reconfigure:
 			// Unmarshal configuration
+			var cfg config.Config
 			if err := viper.Unmarshal(&cfg); err != nil {
 				log.WithField("File", viper.ConfigFileUsed()).WithError(err).Fatal("Error unmarshaling config file. ")
 			}
