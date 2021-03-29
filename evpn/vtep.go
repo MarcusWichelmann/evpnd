@@ -43,6 +43,9 @@ func (vtep *VTEP) Configure(ctx context.Context, cfg config.VTEP) error {
 	if err := vtep.configureDynamicNeighbors(ctx, cfg); err != nil {
 		return err
 	}
+	if err := vtep.configurePeers(ctx, cfg); err != nil {
+		return err
+	}
 
 	log.Info("VTEP configured.")
 
@@ -153,14 +156,14 @@ func (vtep *VTEP) configurePeerGroup(ctx context.Context, cfg config.VTEP) error
 		}); err != nil {
 			return err
 		}
-		log.WithField("PeerGroup", PeerGroupName).Info("Peer group updated.")
+		log.Infof("Peer group %s updated.", PeerGroupName)
 	} else {
 		if err := vtep.bgpServer.AddPeerGroup(ctx, &gobgpapi.AddPeerGroupRequest{
 			PeerGroup: &peerGroup,
 		}); err != nil {
 			return err
 		}
-		log.WithField("PeerGroup", PeerGroupName).Info("Peer group added.")
+		log.Infof("Peer group %s added.", PeerGroupName)
 	}
 
 	return nil
@@ -212,7 +215,7 @@ func (vtep *VTEP) configureDynamicNeighbors(ctx context.Context, cfg config.VTEP
 		}); err != nil {
 			return err
 		}
-		log.WithField("Prefix", tbd.Prefix).Info("Dynamic neighbor entry deleted.")
+		log.Infof("Dynamic neighbor entry for %s deleted.", tbd.Prefix)
 	}
 
 	// Create new entries
@@ -222,11 +225,80 @@ func (vtep *VTEP) configureDynamicNeighbors(ctx context.Context, cfg config.VTEP
 		}); err != nil {
 			return err
 		}
-		log.WithField("Prefix", tbc.Prefix).Info("Dynamic neighbor entry created.")
+		log.Infof("Dynamic neighbor entry for %s created.", tbc.Prefix)
 	}
 
 	if len(toBeCreated) == 0 && len(toBeDeleted) == 0 {
 		log.Info("Dynamic neighbors have not changed.")
+	}
+
+	return nil
+}
+
+func (vtep *VTEP) configurePeers(ctx context.Context, cfg config.VTEP) error {
+	log.Debug("Configuring peers...")
+
+	var toBeDeleted []*gobgpapi.Peer
+	var toBeCreated = make([]*gobgpapi.Peer, len(cfg.BGP.Neighbors.Connect))
+	for i, connect := range cfg.BGP.Neighbors.Connect {
+		toBeCreated[i] = &gobgpapi.Peer{
+			Conf: &gobgpapi.PeerConf{
+				NeighborAddress: connect.Address,
+				PeerGroup:       PeerGroupName,
+			},
+		}
+	}
+
+	// Check for which peer entries already exist
+	err := vtep.bgpServer.ListPeer(ctx, &gobgpapi.ListPeerRequest{}, func(peer *gobgpapi.Peer) {
+		if peer.Conf.PeerGroup != PeerGroupName {
+			return
+		}
+
+		// Was it in the to-be-created slice?
+		var toBeCreatedIndex = -1
+		for i, tbc := range toBeCreated {
+			if tbc.Conf.PeerGroup == peer.Conf.PeerGroup && tbc.Conf.NeighborAddress == peer.Conf.NeighborAddress {
+				toBeCreatedIndex = i
+				break
+			}
+		}
+
+		if toBeCreatedIndex == -1 {
+			// This entry is no longer needed and should be deleted
+			toBeDeleted = append(toBeDeleted, peer)
+		} else {
+			// No need to create this entry because it already exists
+			toBeCreated[toBeCreatedIndex] = toBeCreated[len(toBeCreated)-1]
+			toBeCreated = toBeCreated[:len(toBeCreated)-1]
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	// Delete no longer needed entries
+	for _, tbd := range toBeDeleted {
+		if err := vtep.bgpServer.DeletePeer(ctx, &gobgpapi.DeletePeerRequest{
+			Address: tbd.Conf.NeighborAddress,
+		}); err != nil {
+			return err
+		}
+		log.Infof("Peer %s deleted.", tbd.Conf.NeighborAddress)
+	}
+
+	// Create new entries
+	for _, tbc := range toBeCreated {
+		if err := vtep.bgpServer.AddPeer(ctx, &gobgpapi.AddPeerRequest{
+			Peer: tbc,
+		}); err != nil {
+			return err
+		}
+		log.Infof("Peer %s created.", tbc.Conf.NeighborAddress)
+	}
+
+	if len(toBeCreated) == 0 && len(toBeDeleted) == 0 {
+		log.Info("Peers have not changed.")
 	}
 
 	return nil

@@ -84,12 +84,11 @@ func main() {
 	viper.WatchConfig()
 	viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Info("Configuration file changed. Reconfiguring daemon...")
-
 		reconfigure <- struct{}{}
 	})
 
 	// Handle events
-EventLoop:
+eventLoop:
 	for {
 		select {
 		case <-reconfigure:
@@ -108,7 +107,7 @@ EventLoop:
 		case <-terminate:
 			log.Info("Received terminate signal. Exiting...")
 
-			break EventLoop
+			break eventLoop
 		}
 	}
 
