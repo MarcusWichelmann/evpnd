@@ -101,7 +101,7 @@ eventLoop:
 
 			// Reconfigure the VTEP
 			if err := vtep.Configure(ctx, cfg.VTEP); err != nil {
-				log.WithError(err).Fatal("Configuring the VTEP failed.")
+				log.WithError(err).Error("Configuring the VTEP failed.")
 			}
 
 		case <-terminate:
