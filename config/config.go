@@ -26,6 +26,7 @@ type BGP struct {
 	ListenPort      int       `mapstructure:"listen-port"`
 	ListenAddresses []string  `mapstructure:"listen-addresses"`
 	Neighbors       Neighbors `mapstructure:"neighbors"`
+	API             API       `mapstructure:"api"`
 }
 
 type Neighbors struct {
@@ -40,6 +41,10 @@ type Connect struct {
 
 type Accept struct {
 	Prefix string `mapstructure:"prefix"`
+}
+
+type API struct {
+	Listen string `mapstructure:"listen"`
 }
 
 func SetDefaults(v *viper.Viper) {

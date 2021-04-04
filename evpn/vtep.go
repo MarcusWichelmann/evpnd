@@ -18,17 +18,10 @@ type VTEP struct {
 const PeerGroupName = "evpn-peers"
 
 func NewVTEP() *VTEP {
-	var vtep = VTEP{
-		bgpServer: gobgp.NewBgpServer(),
+	return &VTEP{
+		bgpServer: nil,
 		dataplane: NewDataplane(),
 	}
-
-	go func() {
-		vtep.bgpServer.Serve()
-		log.Error("BGP server routine has ended.")
-	}()
-
-	return &vtep
 }
 
 func (vtep *VTEP) Configure(ctx context.Context, cfg config.VTEP) error {
@@ -54,6 +47,21 @@ func (vtep *VTEP) Configure(ctx context.Context, cfg config.VTEP) error {
 
 func (vtep *VTEP) configureBGPServer(ctx context.Context, cfg config.VTEP) error {
 	log.Debug("Configuring BGP server...")
+
+	// Initialize BGP server
+	if vtep.bgpServer == nil {
+		if cfg.BGP.API.Listen != "" {
+			vtep.bgpServer = gobgp.NewBgpServer(gobgp.GrpcListenAddress(cfg.BGP.API.Listen))
+			log.Infof("BGP server is listening on %s.", cfg.BGP.API.Listen)
+		} else {
+			vtep.bgpServer = gobgp.NewBgpServer()
+		}
+
+		go func() {
+			vtep.bgpServer.Serve()
+			log.Error("BGP server routine has ended.")
+		}()
+	}
 
 	var global = gobgpapi.Global{
 		As:              cfg.BGP.AS,

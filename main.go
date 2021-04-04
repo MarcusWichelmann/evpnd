@@ -68,7 +68,7 @@ func main() {
 		log.WithField("File", viper.ConfigFileUsed()).WithError(err).Fatal("Error reading config file. ")
 	}
 
-	// Initialize the VTEP
+	// Create the VTEP
 	var vtep = evpn.NewVTEP()
 
 	// Create a channel for reconfiguring the daemon
