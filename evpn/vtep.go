@@ -110,7 +110,7 @@ func (vtep *VTEP) configurePeerGroup(ctx context.Context, cfg config.VTEP) error
 	var peerGroup = gobgpapi.PeerGroup{
 		Conf: &gobgpapi.PeerGroupConf{
 			PeerGroupName: PeerGroupName,
-			Description:   "The EVPN Peers (automatically created by evpnd)",
+			Description:   "EVPN Peers",
 			PeerAs:        cfg.BGP.AS, // For now, only peers on the same AS are supported
 		},
 		AfiSafis: []*gobgpapi.AfiSafi{
@@ -188,7 +188,7 @@ func (vtep *VTEP) configureDynamicNeighbors(ctx context.Context, cfg config.VTEP
 		// Was it in the to-be-created slice?
 		var toBeCreatedIndex = -1
 		for i, tbc := range toBeCreated {
-			if tbc.PeerGroup == dn.PeerGroup && tbc.Prefix == dn.Prefix {
+			if tbc.Prefix == dn.Prefix && tbc.PeerGroup == dn.PeerGroup {
 				toBeCreatedIndex = i
 				break
 			}
@@ -244,7 +244,21 @@ func (vtep *VTEP) configurePeers(ctx context.Context, cfg config.VTEP) error {
 		toBeCreated[i] = &gobgpapi.Peer{
 			Conf: &gobgpapi.PeerConf{
 				NeighborAddress: connect.Address,
-				PeerGroup:       PeerGroupName,
+				PeerAs:          cfg.BGP.AS, // For now, only peers on the same AS are supported
+			},
+			Transport: &gobgpapi.Transport{
+				RemotePort: uint32(connect.Port),
+			},
+			AfiSafis: []*gobgpapi.AfiSafi{
+				{
+					Config: &gobgpapi.AfiSafiConfig{
+						Enabled: true,
+						Family: &gobgpapi.Family{
+							Afi:  gobgpapi.Family_AFI_L2VPN,
+							Safi: gobgpapi.Family_SAFI_EVPN,
+						},
+					},
+				},
 			},
 		}
 	}
@@ -258,7 +272,13 @@ func (vtep *VTEP) configurePeers(ctx context.Context, cfg config.VTEP) error {
 		// Was it in the to-be-created slice?
 		var toBeCreatedIndex = -1
 		for i, tbc := range toBeCreated {
-			if tbc.Conf.PeerGroup == peer.Conf.PeerGroup && tbc.Conf.NeighborAddress == peer.Conf.NeighborAddress {
+			if tbc.Conf.NeighborAddress == peer.Conf.NeighborAddress &&
+				tbc.Conf.PeerAs == peer.Conf.PeerAs &&
+				tbc.Transport.RemotePort == peer.Transport.RemotePort &&
+				len(tbc.AfiSafis) == len(peer.AfiSafis) &&
+				tbc.AfiSafis[0].Config.Enabled == peer.AfiSafis[0].Config.Enabled &&
+				tbc.AfiSafis[0].Config.Family.Afi == peer.AfiSafis[0].Config.Family.Afi &&
+				tbc.AfiSafis[0].Config.Family.Safi == peer.AfiSafis[0].Config.Family.Safi {
 				toBeCreatedIndex = i
 				break
 			}

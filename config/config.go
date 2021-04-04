@@ -35,6 +35,7 @@ type Neighbors struct {
 
 type Connect struct {
 	Address string `mapstructure:"address"`
+	Port    uint16 `mapstructure:"port"`
 }
 
 type Accept struct {
@@ -44,4 +45,5 @@ type Accept struct {
 func SetDefaults(v *viper.Viper) {
 	v.SetDefault("vtep.bgp.listen-port", -1)
 	v.SetDefault("vtep.bgp.listen-addresses", []string{"0.0.0.0", "::"})
+	v.SetDefault("vtep.bgp.neighbors.connect.port", 179)
 }
